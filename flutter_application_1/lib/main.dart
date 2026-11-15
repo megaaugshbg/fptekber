@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'services/supabase_config.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initSupabase();
   runApp(const MyApp());
 }
 

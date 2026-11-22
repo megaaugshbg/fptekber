@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'screens/beranda_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/shell_screen.dart';
 import 'services/supabase_config.dart';
 import 'theme/app_theme.dart';
 
@@ -18,7 +18,7 @@ class MarkirApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Markir.in',
+      title: 'Markir.In',
       debugShowCheckedModeBanner: false,
       theme: buatTema(),
       home: const AuthGate(),
@@ -40,12 +40,11 @@ class AuthGate extends StatelessWidget {
         // tidak sempat melihat layar Login.
         if (!snapshot.hasData) {
           return const Scaffold(
-            backgroundColor: Color(0xFFBBD0F5),
             body: Center(child: CircularProgressIndicator()),
           );
         }
         final sudahLogin = supabase.auth.currentSession != null;
-        return sudahLogin ? const BerandaScreen() : const LoginScreen();
+        return sudahLogin ? const ShellScreen() : const LoginScreen();
       },
     );
   }

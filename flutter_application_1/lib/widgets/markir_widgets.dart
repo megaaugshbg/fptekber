@@ -2,107 +2,40 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-const gayaJudulKartu = TextStyle(
-  fontSize: 20,
-  fontWeight: FontWeight.w800,
-  color: AppColors.navy,
-);
+export 'logo_markir.dart';
 
-/// Logo Markir.in. [besar] = true untuk halaman login/daftar,
-/// false untuk AppBar.
-class LogoMarkir extends StatelessWidget {
-  const LogoMarkir({super.key, this.besar = true});
+/// Lebar layar mulai dianggap "desktop" (navbar penuh, login 2 kolom).
+const double batasDesktop = 900;
 
-  final bool besar;
-
-  @override
-  Widget build(BuildContext context) {
-    final teks = RichText(
-      text: TextSpan(
-        style: TextStyle(
-          fontSize: besar ? 30 : 17,
-          color: AppColors.navy,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.5,
-        ),
-        children: const [
-          TextSpan(text: 'MARKIR'),
-          TextSpan(
-            text: '.in',
-            style: TextStyle(fontWeight: FontWeight.w400),
-          ),
-        ],
-      ),
-    );
-
-    if (!besar) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.local_parking_rounded,
-              color: AppColors.navy, size: 22),
-          const SizedBox(width: 6),
-          teks,
-        ],
-      );
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 84,
-          height: 84,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white,
-            border: Border.all(color: AppColors.navy, width: 3),
-          ),
-          child: const Icon(
-            Icons.local_parking_rounded,
-            size: 46,
-            color: AppColors.navy,
-          ),
-        ),
-        const SizedBox(height: 12),
-        teks,
-      ],
-    );
-  }
-}
-
-/// Kartu putih dengan sudut membulat dan bayangan halus.
+/// Kartu putih: border garis 1px + bayangan lembut.
 class KartuPutih extends StatelessWidget {
   const KartuPutih({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(20),
+    this.radius = 16,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.navy.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: AppColors.permukaan,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: AppColors.garis),
+        boxShadow: bayanganKartu,
       ),
       child: child,
     );
   }
 }
 
-/// Tombol utama. Menampilkan spinner saat [loading].
+/// Tombol utama penuh lebar. Menampilkan spinner kecil saat [loading].
 class TombolUtama extends StatelessWidget {
   const TombolUtama({
     super.key,
@@ -121,16 +54,147 @@ class TombolUtama extends StatelessWidget {
       onPressed: loading ? null : onPressed,
       child: loading
           ? const SizedBox(
-              width: 22,
-              height: 22,
+              width: 20,
+              height: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2.5,
-                color: Colors.white,
+                color: AppColors.primer,
               ),
             )
           : Text(label),
     );
   }
+}
+
+/// Tombol outline (border 2px primer).
+class TombolOutline extends StatelessWidget {
+  const TombolOutline({super.key, required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) =>
+      OutlinedButton(onPressed: onPressed, child: Text(label));
+}
+
+/// Label 14px medium di atas input.
+class LabelField extends StatelessWidget {
+  const LabelField(this.label, {super.key, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(label,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 6),
+        child,
+      ],
+    );
+  }
+}
+
+/// Banner pesan (error merah atau info primer-soft).
+class BannerPesan extends StatelessWidget {
+  const BannerPesan(this.pesan, {super.key, this.error = true});
+
+  final String pesan;
+  final bool error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: error ? AppColors.merah50 : AppColors.primerSoft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: error ? AppColors.merah200 : AppColors.garis,
+        ),
+      ),
+      child: Text(
+        pesan,
+        style: TextStyle(
+          fontSize: 14,
+          color: error ? AppColors.merah : AppColors.primer,
+        ),
+      ),
+    );
+  }
+}
+
+/// Border putus-putus (dipakai keadaan kosong & lorong denah).
+class DashedBorderPainter extends CustomPainter {
+  DashedBorderPainter({
+    required this.warna,
+    this.lebar = 2,
+    this.radius = 24,
+    this.dash = 8,
+    this.celah = 6,
+  });
+
+  final Color warna;
+  final double lebar;
+  final double radius;
+  final double dash;
+  final double celah;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = warna
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = lebar;
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+        (Offset.zero & size).deflate(lebar / 2),
+        Radius.circular(radius),
+      ));
+    for (final m in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < m.length) {
+        canvas.drawPath(m.extractPath(d, d + dash), paint);
+        d += dash + celah;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(DashedBorderPainter old) =>
+      old.warna != warna || old.lebar != lebar || old.radius != radius;
+}
+
+/// Garis vertikal putus-putus (lorong denah).
+class GarisVertikalPutus extends StatelessWidget {
+  const GarisVertikalPutus({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      CustomPaint(painter: _GarisVertikalPainter(), size: const Size(2, 0));
+}
+
+class _GarisVertikalPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.garis
+      ..strokeWidth = 2;
+    var y = 0.0;
+    while (y < size.height) {
+      canvas.drawLine(Offset(size.width / 2, y),
+          Offset(size.width / 2, (y + 8).clamp(0, size.height)), paint);
+      y += 14;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
 /// SnackBar singkat untuk pesan sukses atau error.

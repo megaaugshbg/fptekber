@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/auth_layout.dart';
 import '../widgets/markir_widgets.dart';
 
 class RegistrasiScreen extends StatefulWidget {
@@ -109,19 +110,8 @@ class _RegistrasiScreenState extends State<RegistrasiScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.biruMuda,
-      appBar: AppBar(
-        title: Text(_tahapKode ? 'Verifikasi Email' : 'Daftar Akun'),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: KartuPutih(
-            child: _tahapKode ? _formKodeWidget() : _formDaftarWidget(),
-          ),
-        ),
-      ),
+    return AuthLayout(
+      child: _tahapKode ? _formKodeWidget() : _formDaftarWidget(),
     );
   }
 
@@ -131,13 +121,18 @@ class _RegistrasiScreenState extends State<RegistrasiScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Buat akun baru', style: gayaJudulKartu),
+          const Text(
+            'Buat akun baru',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 4),
           const Text(
-            'Lengkapi data berikut untuk mulai memesan parkir.',
-            style: TextStyle(color: AppColors.abu),
+            'Isi data diri kamu dengan benar ya.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: AppColors.slate500),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           TextFormField(
             controller: _nama,
             textCapitalization: TextCapitalization.words,
@@ -147,7 +142,7 @@ class _RegistrasiScreenState extends State<RegistrasiScreen> {
             ),
             validator: (v) => validasiWajib(v, 'Nama'),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           TextFormField(
             controller: _email,
             keyboardType: TextInputType.emailAddress,
@@ -157,7 +152,7 @@ class _RegistrasiScreenState extends State<RegistrasiScreen> {
             ),
             validator: validasiEmail,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           TextFormField(
             controller: _telp,
             keyboardType: TextInputType.phone,
@@ -169,7 +164,7 @@ class _RegistrasiScreenState extends State<RegistrasiScreen> {
             ),
             validator: validasiTelp,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           TextFormField(
             controller: _password,
             obscureText: _sembunyi,
@@ -185,7 +180,7 @@ class _RegistrasiScreenState extends State<RegistrasiScreen> {
             ),
             validator: validasiPassword,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           TextFormField(
             controller: _konfirmasi,
             obscureText: _sembunyi,
@@ -209,7 +204,7 @@ class _RegistrasiScreenState extends State<RegistrasiScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text('Sudah punya akun?',
-                  style: TextStyle(color: AppColors.abu)),
+                  style: TextStyle(color: AppColors.slate500)),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Masuk',
@@ -229,18 +224,18 @@ class _RegistrasiScreenState extends State<RegistrasiScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Icon(Icons.mark_email_read_outlined,
-              size: 56, color: AppColors.navy),
+              size: 56, color: AppColors.primer),
           const SizedBox(height: 12),
           const Text(
             'Masukkan kode verifikasi',
             textAlign: TextAlign.center,
-            style: gayaJudulKartu,
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Text(
             'Kode 6 digit telah dikirim ke\n${_email.text.trim()}',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.abu),
+            style: const TextStyle(fontSize: 14, color: AppColors.slate500),
           ),
           const SizedBox(height: 24),
           TextFormField(

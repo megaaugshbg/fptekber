@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/format_pemesanan.dart';
 import '../theme/app_theme.dart';
+import '../widgets/auth_layout.dart';
 import '../widgets/markir_widgets.dart';
 import 'registrasi_screen.dart';
 
@@ -20,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _sembunyi = true;
   bool _loading = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -28,23 +31,30 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  /// Sapaan berdasarkan jam WIB.
   String _sapaan() {
-    final jam = DateTime.now().hour;
-    if (jam < 11) return 'Halo! Selamat pagi!';
-    if (jam < 15) return 'Halo! Selamat siang!';
-    if (jam < 18) return 'Halo! Selamat sore!';
-    return 'Halo! Selamat malam!';
+    final jam = keWib(DateTime.now()).hour;
+    final waktu = jam < 11
+        ? 'pagi'
+        : jam < 15
+            ? 'siang'
+            : jam < 19
+                ? 'sore'
+                : 'malam';
+    return 'Halo! Selamat $waktu!';
   }
 
   Future<void> _masuk() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       await _auth.masuk(email: _email.text.trim(), password: _password.text);
-      // Tidak perlu pindah halaman manual: AuthGate di main.dart
-      // otomatis menampilkan Beranda ketika sesi berubah.
+      // AuthGate di main.dart otomatis menampilkan Beranda saat sesi berubah.
     } catch (e) {
-      if (mounted) pesanSnack(context, AuthService.pesanError(e));
+      if (mounted) setState(() => _error = AuthService.pesanError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -52,91 +62,85 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.biruMuda,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              const SizedBox(height: 24),
-              Text(
-                _sapaan(),
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.navy,
-                ),
+    return AuthLayout(
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              _sapaan(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Masuk untuk mulai cari parkir.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppColors.slate500),
+            ),
+            const SizedBox(height: 24),
+            if (_error != null) ...[
+              BannerPesan(_error!),
+              const SizedBox(height: 16),
+            ],
+            LabelField(
+              'Alamat email',
+              child: TextFormField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(hintText: 'nama@email.com'),
+                validator: validasiEmail,
               ),
-              const SizedBox(height: 24),
-              const LogoMarkir(),
-              const SizedBox(height: 32),
-              KartuPutih(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text('Masuk ke akunmu', style: gayaJudulKartu),
-                      const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _email,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          hintText: 'Masukkan alamat email',
-                        ),
-                        validator: validasiEmail,
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _password,
-                        obscureText: _sembunyi,
-                        decoration: InputDecoration(
-                          hintText: 'Masukkan kata sandi',
-                          suffixIcon: IconButton(
-                            icon: Icon(_sembunyi
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined),
-                            onPressed: () =>
-                                setState(() => _sembunyi = !_sembunyi),
-                          ),
-                        ),
-                        validator: validasiPassword,
-                      ),
-                      const SizedBox(height: 24),
-                      TombolUtama(
-                        label: 'Masuk',
-                        loading: _loading,
-                        onPressed: _masuk,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'Belum punya akun?',
-                            style: TextStyle(color: AppColors.abu),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const RegistrasiScreen(),
-                              ),
-                            ),
-                            child: const Text(
-                              'Daftar',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+            ),
+            const SizedBox(height: 16),
+            LabelField(
+              'Password',
+              child: TextFormField(
+                controller: _password,
+                obscureText: _sembunyi,
+                onFieldSubmitted: (_) => _masuk(),
+                decoration: InputDecoration(
+                  hintText: 'Masukkan password',
+                  suffixIcon: IconButton(
+                    icon: Icon(_sembunyi
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined),
+                    onPressed: () => setState(() => _sembunyi = !_sembunyi),
                   ),
                 ),
+                validator: validasiPassword,
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            TombolUtama(label: 'Masuk', loading: _loading, onPressed: _masuk),
+            const SizedBox(height: 20),
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text(
+                  'Belum punya akun? ',
+                  style: TextStyle(fontSize: 14, color: AppColors.slate500),
+                ),
+                InkWell(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RegistrasiScreen()),
+                  ),
+                  child: const Text(
+                    'Daftar',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

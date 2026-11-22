@@ -1,287 +1,194 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import '../services/auth_service.dart';
 import '../services/format_pemesanan.dart';
 import '../services/lokasi_service.dart';
-import '../services/supabase_config.dart';
+import '../services/pemesanan_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/markir_widgets.dart';
+import 'konfirmasi_pesanan_screen.dart';
+import 'pilih_slot_screen.dart';
 
 class BerandaScreen extends StatefulWidget {
-  const BerandaScreen({super.key});
+  const BerandaScreen({
+    super.key,
+    required this.profil,
+    required this.kataKunci,
+    required this.onHapusPencarian,
+  });
+
+  final Future<Map<String, dynamic>> profil;
+  final String kataKunci;
+  final VoidCallback onHapusPencarian;
 
   @override
   State<BerandaScreen> createState() => _BerandaScreenState();
 }
 
 class _BerandaScreenState extends State<BerandaScreen> {
-  final _auth = AuthService();
   final _lokasi = LokasiService();
-  final _cari = TextEditingController();
-  Timer? _debounce;
+  final _pemesanan = PemesananService();
 
-  int _tab = 1; // 0 Pengaturan, 1 Beranda, 2 Akun
-
-  late Future<Map<String, dynamic>> _profil;
   late Future<List<Map<String, dynamic>>> _daftarLokasi;
+  late Future<Map<String, dynamic>?> _aktif;
 
   @override
   void initState() {
     super.initState();
-    _profil = _auth.ambilProfil();
-    _daftarLokasi = _lokasi.cariLokasi();
+    _muat();
   }
 
   @override
-  void dispose() {
-    _debounce?.cancel();
-    _cari.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant BerandaScreen old) {
+    super.didUpdateWidget(old);
+    if (old.kataKunci != widget.kataKunci) _muatLokasi();
   }
 
   void _muatLokasi() {
     setState(() {
-      _daftarLokasi = _lokasi.cariLokasi(kataKunci: _cari.text);
+      _daftarLokasi = _lokasi.cariLokasi(kataKunci: widget.kataKunci);
     });
   }
 
-  /// Tunggu 400 ms setelah user berhenti mengetik, baru cari.
-  void _onCariBerubah(String _) {
-    setState(() {}); // untuk memunculkan tombol hapus
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (mounted) _muatLokasi();
-    });
+  void _muat() {
+    _daftarLokasi = _lokasi.cariLokasi(kataKunci: widget.kataKunci);
+    // Pesanan aktif hanya pelengkap: kalau gagal, banner tidak ditampilkan.
+    _aktif = _pemesanan.pesananAktif().catchError((_) => null);
   }
 
-  Future<void> _keluar() async {
-    try {
-      await _auth.keluar();
-      // AuthGate otomatis kembali ke halaman Login.
-    } catch (e) {
-      if (mounted) pesanSnack(context, AuthService.pesanError(e));
-    }
+  Future<void> _bukaSlot(Map<String, dynamic> lokasi) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => PilihSlotScreen(lokasi: lokasi)),
+    );
+    if (mounted) setState(_muat);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const LogoMarkir(besar: false),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
-            onPressed: () => pesanSnack(context, 'Notifikasi belum tersedia'),
-          ),
-        ],
-      ),
-      body: IndexedStack(
-        index: _tab,
-        children: [
-          _isiPengaturan(),
-          _isiBeranda(),
-          _isiAkun(),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _tab,
-        onTap: (i) => setState(() => _tab = i),
-        selectedItemColor: AppColors.navy,
-        unselectedItemColor: AppColors.abu,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
-            label: 'Pengaturan',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home_rounded),
-            label: 'Beranda',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Akun',
-          ),
-        ],
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1152),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            FutureBuilder<Map<String, dynamic>>(
+              future: widget.profil,
+              builder: (context, snap) {
+                final nama = (snap.data?['nama'] as String?)?.trim() ?? '';
+                final depan = nama.isEmpty ? '' : nama.split(RegExp(r'\s+')).first;
+                return Text(
+                  depan.isEmpty
+                      ? 'Halo! Mau parkir di mana?'
+                      : 'Halo, $depan! Mau parkir di mana?',
+                  style: const TextStyle(
+                      fontSize: 14, color: AppColors.slate500),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            _bannerAktif(),
+            _judul(),
+            const SizedBox(height: 12),
+            _chipFilter(),
+            const SizedBox(height: 16),
+            _daftar(),
+          ],
+        ),
       ),
     );
   }
 
-  // ---------- Tab Beranda ----------
-
-  Widget _isiBeranda() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        FutureBuilder<Map<String, dynamic>>(
-          future: _profil,
-          builder: (context, snap) {
-            final nama = (snap.data?['nama'] as String?) ?? 'Penyewa';
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Halo, $nama!',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.navy,
-                  ),
+  Widget _bannerAktif() {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: _aktif,
+      builder: (context, snap) {
+        final p = snap.data;
+        if (p == null) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Material(
+            color: AppColors.permukaanAlt,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => KonfirmasiPesananScreen(pemesanan: p),
                 ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Mau parkir di mana hari ini?',
-                  style: TextStyle(color: AppColors.abu),
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 20),
-        TextField(
-          controller: _cari,
-          onChanged: _onCariBerubah,
-          onSubmitted: (_) => _muatLokasi(),
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            hintText: 'Cari lokasi parkir...',
-            prefixIcon: const Icon(Icons.search_rounded),
-            suffixIcon: _cari.text.isEmpty
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () {
-                      _cari.clear();
-                      _muatLokasi();
-                    },
-                  ),
-          ),
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'Lokasi Parkir',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: AppColors.navy,
-          ),
-        ),
-        const SizedBox(height: 12),
-        FutureBuilder<List<Map<String, dynamic>>>(
-          future: _daftarLokasi,
-          builder: (context, snap) {
-            if (snap.connectionState != ConnectionState.done) {
-              return const Padding(
-                padding: EdgeInsets.all(32),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            if (snap.hasError) {
-              return KartuPutih(
-                child: Column(
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
                   children: [
-                    const Text('Gagal memuat lokasi. Periksa koneksi kamu.'),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: _muatLokasi,
-                      child: const Text('Coba lagi'),
+                    const Icon(Icons.confirmation_number_outlined, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(children: [
+                          const TextSpan(text: 'Kamu punya pesanan aktif '),
+                          TextSpan(
+                            text: kodePesanan(p),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ]),
+                        style: const TextStyle(fontSize: 14),
+                      ),
                     ),
+                    const Icon(Icons.chevron_right_rounded),
                   ],
                 ),
-              );
-            }
-            final data = snap.data ?? [];
-            if (data.isEmpty) {
-              return const KartuPutih(
-                child: Text(
-                  'Tidak ada lokasi dengan slot tersedia.',
-                  textAlign: TextAlign.center,
-                ),
-              );
-            }
-            return Column(
-              children: [
-                for (final l in data)
-                  _KartuLokasi(
-                    data: l,
-                    // TODO: arahkan ke halaman Pilih Slot (screen 5).
-                    onTap: () => pesanSnack(
-                      context,
-                      'Halaman pilih slot akan dibuat selanjutnya',
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  // ---------- Tab Pengaturan ----------
-
-  Widget _isiPengaturan() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.settings_outlined, size: 56, color: AppColors.biru),
-          SizedBox(height: 12),
-          Text(
-            'Pengaturan akan hadir di versi berikutnya',
-            style: TextStyle(color: AppColors.abu),
+              ),
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  // ---------- Tab Akun ----------
-
-  Widget _isiAkun() {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _profil,
+  Widget _judul() {
+    final cari = widget.kataKunci;
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _daftarLokasi,
       builder: (context, snap) {
-        final p = snap.data ?? <String, dynamic>{};
-        return ListView(
-          padding: const EdgeInsets.all(20),
+        final n = snap.data?.length;
+        final info = Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 6,
           children: [
-            const Center(
-              child: CircleAvatar(
-                radius: 40,
-                backgroundColor: AppColors.biruMuda,
-                child: Icon(Icons.person, size: 44, color: AppColors.navy),
-              ),
-            ),
-            const SizedBox(height: 20),
-            KartuPutih(
-              child: Column(
-                children: [
-                  _baris('Nama', (p['nama'] as String?) ?? '-'),
-                  const Divider(height: 24),
-                  _baris('Email', supabase.auth.currentUser?.email ?? '-'),
-                  const Divider(height: 24),
-                  _baris('No. Telepon', (p['no_telp'] as String?) ?? '-'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: _keluar,
-              icon: const Icon(Icons.logout_rounded),
-              label: const Text('Keluar'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.merah,
-                minimumSize: const Size.fromHeight(50),
-                side: const BorderSide(color: AppColors.merah),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            if (cari.isNotEmpty)
+              Text('Hasil untuk “$cari” ·',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.slate500)),
+            if (cari.isNotEmpty)
+              InkWell(
+                onTap: widget.onHapusPencarian,
+                child: const Text(
+                  'Hapus pencarian',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
+              )
+            else if (n != null)
+              Text('$n lokasi',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.slate500)),
+          ],
+        );
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const Text('Mal',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: info,
               ),
             ),
           ],
@@ -290,77 +197,253 @@ class _BerandaScreenState extends State<BerandaScreen> {
     );
   }
 
-  Widget _baris(String label, String nilai) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _chipFilter() {
+    return Wrap(
+      spacing: 8,
       children: [
-        SizedBox(
-          width: 110,
-          child: Text(label, style: const TextStyle(color: AppColors.abu)),
-        ),
-        Expanded(
-          child: Text(
-            nilai,
-            style: const TextStyle(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.primer,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: const Text(
+            'Semua',
+            style: TextStyle(
+              fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: AppColors.teks,
+              color: AppColors.onPrimer,
+            ),
+          ),
+        ),
+        // TODO(geolokasi): aktifkan setelah posisi pengguna tersedia
+        // (LokasiService.cariLokasi sudah mendukung latUser/lngUser).
+        Tooltip(
+          message: 'Izinkan akses lokasi untuk memakai filter ini',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.slate200.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Text(
+              'Terdekat',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.slate500,
+              ),
             ),
           ),
         ),
       ],
     );
   }
+
+  Widget _daftar() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _daftarLokasi,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final data = snap.data ?? [];
+        if (snap.hasError) {
+          return _kosong(
+            'Data lahan parkir belum tersedia',
+            'Silakan coba lagi nanti.',
+          );
+        }
+        if (data.isEmpty) {
+          if (widget.kataKunci.isNotEmpty) {
+            return _kosong(
+              'Tidak ada mal yang cocok',
+              'Coba kata kunci lain.',
+              tombol: 'Tampilkan semua mal',
+            );
+          }
+          return _kosong(
+            'Data lahan parkir belum tersedia',
+            'Silakan coba lagi nanti.',
+          );
+        }
+        return LayoutBuilder(
+          builder: (context, c) {
+            if (c.maxWidth >= batasDesktop) {
+              final kolom = c.maxWidth >= 1100 ? 4 : 3;
+              const jarak = 16.0;
+              final lebar = (c.maxWidth - jarak * (kolom - 1)) / kolom;
+              return Wrap(
+                spacing: jarak,
+                runSpacing: jarak,
+                children: [
+                  for (final l in data)
+                    SizedBox(
+                      width: lebar,
+                      child: _KartuMal(data: l, onTap: () => _bukaSlot(l)),
+                    ),
+                ],
+              );
+            }
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final l in data)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: SizedBox(
+                          width: 264,
+                          child: _KartuMal(data: l, onTap: () => _bukaSlot(l)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _kosong(String judul, String sub, {String? tombol}) {
+    return CustomPaint(
+      painter: DashedBorderPainter(warna: AppColors.garis),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          children: [
+            Text(judul,
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(sub,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 14, color: AppColors.slate500)),
+            if (tombol != null) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 220,
+                child: TombolUtama(
+                  label: tombol,
+                  onPressed: widget.onHapusPencarian,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-/// Kartu satu lokasi parkir.
-class _KartuLokasi extends StatelessWidget {
-  const _KartuLokasi({required this.data, required this.onTap});
+String _formatJarak(double km) {
+  if (km < 1) return '${(km * 1000).round()} m';
+  return '${km.toStringAsFixed(1).replaceAll('.', ',')} km';
+}
+
+/// Kartu satu mal (tanpa foto; bagian atas = blok ikon).
+class _KartuMal extends StatefulWidget {
+  const _KartuMal({required this.data, required this.onTap});
 
   final Map<String, dynamic> data;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final nama = (data['nama'] as String?) ?? '-';
-    final alamat = (data['alamat'] as String?) ?? '';
-    final tarif = data['tarif_per_jam'] as num?;
-    final slot = (data['slot_tersedia'] as int?) ?? 0;
-    final jarak = data['jarak_km'] as double?;
+  State<_KartuMal> createState() => _KartuMalState();
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+class _KartuMalState extends State<_KartuMal> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    final nama = (d['nama'] as String?) ?? '-';
+    final alamat = (d['alamat'] as String?) ?? '';
+    final tarif = d['tarif_per_jam'] as num?;
+    final slot = (d['slot_tersedia'] as int?) ?? 0;
+    final jarak = d['jarak_km'] as double?;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+        decoration: BoxDecoration(
+          color: AppColors.permukaan,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.garis),
+          boxShadow: bayanganKartu,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onTap,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: AppColors.biruMuda,
-                    borderRadius: BorderRadius.circular(14),
+                  height: 96,
+                  width: double.infinity,
+                  color: AppColors.permukaanAlt,
+                  child: Stack(
+                    children: [
+                      const Center(
+                        child: Icon(Icons.local_parking_rounded,
+                            size: 44, color: AppColors.primer),
+                      ),
+                      if (jarak != null)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.permukaan,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.navigation_rounded, size: 12),
+                                const SizedBox(width: 4),
+                                Text(_formatJarak(jarak),
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  child: const Icon(Icons.local_parking_rounded,
-                      color: AppColors.navy, size: 28),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
+                Padding(
+                  padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         nama,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: AppColors.teks,
-                        ),
+                            fontSize: 15, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -368,51 +451,60 @@ class _KartuLokasi extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 12.5,
-                          color: AppColors.abu,
-                        ),
+                            fontSize: 12, color: AppColors.slate500),
                       ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
+                      const SizedBox(height: 10),
+                      Row(
                         children: [
-                          _chip('$slot slot tersedia', AppColors.hijau),
-                          if (tarif != null)
-                            _chip('${formatRupiah(tarif)}/jam',
-                                AppColors.navy),
-                          if (jarak != null)
-                            _chip(
-                              '${jarak.toStringAsFixed(1).replaceAll('.', ',')} km',
-                              AppColors.abu,
+                          if (slot > 0)
+                            Text.rich(
+                              TextSpan(children: [
+                                TextSpan(
+                                  text: '$slot',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700),
+                                ),
+                                const TextSpan(
+                                  text: ' slot kosong',
+                                  style: TextStyle(color: AppColors.slate500),
+                                ),
+                              ]),
+                              style: const TextStyle(fontSize: 13),
+                            )
+                          else
+                            const Text('Slot penuh',
+                                style: TextStyle(
+                                    fontSize: 13, color: AppColors.slate500)),
+                          const SizedBox(width: 8),
+                          if (slot > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.primerSoft,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Text('Normal',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600)),
                             ),
                         ],
                       ),
+                      if (tarif != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          '${formatRupiah(tarif)}/jam',
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, color: AppColors.abu),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _chip(String teks, Color warna) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: warna.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        teks,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: warna,
         ),
       ),
     );

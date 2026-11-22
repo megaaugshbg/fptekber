@@ -1,93 +1,93 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_config.dart';
 
-/// Dilempar kalau slot sudah keburu dipesan orang lain.
-class SlotTidakTersediaException implements Exception {
-  @override
-  String toString() => 'Slot sudah tidak tersedia, silakan pilih slot lain';
-}
-
-/// CRUD pemesanan + pembayaran, check-in, check-out.
+/// Pemesanan + pembayaran, check-in, check-out.
+/// Semua perubahan data lewat RPC (klien tidak boleh insert/update langsung).
 class PemesananService {
-  String get _userId => supabase.auth.currentUser!.id;
+  /// Join standar: slot, lokasi (nama, alamat, tarif), dan pembayaran.
+  static const String _join =
+      '*, slot(kode_slot, tipe, lokasi(nama, alamat, tarif_per_jam)), pembayaran(*)';
 
-  /// CREATE - pesan slot. total_biaya dihitung otomatis di database.
-  Future<Map<String, dynamic>> pesan({
-    required int slotId,
-    required DateTime mulai,
-    required DateTime selesai,
-  }) async {
-    try {
-      return await supabase
-          .from('pemesanan')
-          .insert({
-            'user_id': _userId,
-            'slot_id': slotId,
-            'waktu_mulai': mulai.toUtc().toIso8601String(),
-            'waktu_selesai': selesai.toUtc().toIso8601String(),
-          })
-          .select('*, slot(kode_slot, tipe, lokasi(nama, tarif_per_jam))')
-          .single();
-    } on PostgrestException catch (e) {
-      // 23505 = unique violation -> slot sudah punya pemesanan aktif
-      if (e.code == '23505') throw SlotTidakTersediaException();
-      rethrow;
-    }
+  /// CREATE - pesan slot. Mengembalikan pemesanan berstatus menunggu_bayar.
+  Future<Map<String, dynamic>> pesan(int slotId) async {
+    final res = await supabase.rpc('pesan', params: {'p_slot_id': slotId});
+    return Map<String, dynamic>.from(res as Map);
+  }
+
+  /// READ - satu pemesanan aktif (menunggu_bayar / dibayar / check_in)
+  /// milik user yang login, atau null kalau tidak ada.
+  Future<Map<String, dynamic>?> pesananAktif() async {
+    return await supabase
+        .from('pemesanan')
+        .select(_join)
+        .inFilter('status', ['menunggu_bayar', 'dibayar', 'check_in'])
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
   }
 
   /// READ - riwayat pemesanan milik user yang login, terbaru di atas.
   Future<List<Map<String, dynamic>>> riwayat() async {
     final data = await supabase
         .from('pemesanan')
-        .select('*, slot(kode_slot, tipe, lokasi(nama, alamat)), pembayaran(*)')
+        .select(_join)
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(data);
   }
 
   /// READ - detail satu pemesanan.
   Future<Map<String, dynamic>> detail(int id) async {
-    return await supabase
-        .from('pemesanan')
-        .select('*, slot(kode_slot, tipe, lokasi(nama, alamat, tarif_per_jam)), pembayaran(*)')
-        .eq('id', id)
-        .single();
+    return await supabase.from('pemesanan').select(_join).eq('id', id).single();
   }
 
-  /// UPDATE - ubah jadwal. Hanya bisa sebelum check-in (dijaga RLS).
-  Future<Map<String, dynamic>> ubahJadwal({
-    required int id,
-    required DateTime mulai,
-    required DateTime selesai,
+  /// UPDATE - ubah jadwal. Sebelum bayar boleh ubah mulai dan durasi,
+  /// sesudah bayar hanya mulai. [mulai] harus waktu sebenarnya
+  /// (kalau dari jam dinding WIB, ubah dulu dengan dariWib).
+  Future<Map<String, dynamic>> ubahJadwal(
+    int id,
+    DateTime mulai, {
+    int? durasi,
   }) async {
-    return await supabase
-        .from('pemesanan')
-        .update({
-          'waktu_mulai': mulai.toUtc().toIso8601String(),
-          'waktu_selesai': selesai.toUtc().toIso8601String(),
-        })
-        .eq('id', id)
-        .select()
-        .single();
+    final res = await supabase.rpc('ubah_jadwal', params: {
+      'p_pemesanan_id': id,
+      'p_mulai': mulai.toUtc().toIso8601String(),
+      'p_durasi': ?durasi,
+    });
+    return Map<String, dynamic>.from(res as Map);
   }
 
-  /// UPDATE - batalkan. Slot otomatis kembali tersedia.
-  Future<void> batalkan(int id) async {
-    await supabase
-        .from('pemesanan')
-        .update({'status': 'dibatalkan'})
-        .eq('id', id);
+  /// UPDATE - batalkan pesanan (hanya yang masih menunggu_bayar).
+  Future<Map<String, dynamic>> batalkan(int id) async {
+    final res = await supabase.rpc('batalkan', params: {'p_pemesanan_id': id});
+    return Map<String, dynamic>.from(res as Map);
   }
 
-  /// DELETE - hapus dari riwayat (yang belum dibayar / sudah dibatalkan).
+  /// DELETE - hapus dari riwayat, hanya untuk yang berstatus dibatalkan.
+  /// RLS menolak tanpa error, jadi hasil kosong berarti tidak terhapus.
   Future<void> hapus(int id) async {
-    await supabase.from('pemesanan').delete().eq('id', id);
+    final hasil = await supabase.from('pemesanan').delete().eq('id', id).select();
+    if (hasil.isEmpty) {
+      throw Exception('Hanya riwayat yang dibatalkan yang dapat dihapus.');
+    }
   }
 
-  /// Bayar (simulasi QRIS). Status pemesanan jadi 'dibayar'.
-  Future<Map<String, dynamic>> bayar(int id, {String metode = 'QRIS'}) async {
+  /// Bayar (simulasi). Durasi 1 sampai 6 jam, total = tarif x durasi
+  /// (dihitung database). Status pemesanan jadi 'dibayar'.
+  Future<Map<String, dynamic>> bayar(
+    int id,
+    int durasi, {
+    String metode = 'QRIS',
+  }) async {
+    if (durasi < 1 || durasi > 6) {
+      throw ArgumentError.value(durasi, 'durasi', 'harus 1 sampai 6 jam');
+    }
     final res = await supabase.rpc('bayar', params: {
       'p_pemesanan_id': id,
+      'p_durasi': durasi,
       'p_metode': metode,
     });
     return Map<String, dynamic>.from(res as Map);
@@ -99,7 +99,8 @@ class PemesananService {
     return Map<String, dynamic>.from(res as Map);
   }
 
-  /// Check-out pakai kode booking hasil scan. Mengembalikan total biaya akhir.
+  /// Check-out pakai kode booking hasil scan. total_biaya TIDAK berubah:
+  /// sama dengan jumlah yang sudah dibayar.
   Future<Map<String, dynamic>> checkOut(String kodeBooking) async {
     final res = await supabase.rpc('checkout', params: {
       'p_kode_booking': kodeBooking,
@@ -107,14 +108,17 @@ class PemesananService {
     return Map<String, dynamic>.from(res as Map);
   }
 
-  /// Pesan error dari database (raise exception di SQL) untuk SnackBar.
+  /// Pesan error untuk SnackBar. Pesan dari database sudah berbahasa Indonesia.
   static String pesanError(Object e) {
-    if (e is SlotTidakTersediaException) return e.toString();
-    if (e is PostgrestException) {
-      if (e.code == 'PGRST116') {
-        return 'Pemesanan tidak bisa diubah (sudah check-in atau tidak ditemukan)';
-      }
-      return e.message;
+    if (e is PostgrestException) return e.message;
+    if (e is SocketException ||
+        e is TimeoutException ||
+        e.runtimeType.toString() == 'ClientException') {
+      return 'Koneksi terputus. Silakan coba lagi.';
+    }
+    if (e is ArgumentError) return e.message.toString();
+    if (e is Exception) {
+      return e.toString().replaceFirst('Exception: ', '');
     }
     return 'Terjadi kesalahan, coba lagi';
   }

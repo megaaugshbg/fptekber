@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../services/data_pemesanan.dart';
 import '../services/format_pemesanan.dart';
 import '../services/lokasi_service.dart';
 import '../services/pemesanan_service.dart';
+import '../state/sesi_booking.dart';
 import '../theme/app_theme.dart';
+import '../widgets/kerangka_markir.dart';
 import '../widgets/markir_widgets.dart';
+import 'check_in_screen.dart';
 import 'konfirmasi_pesanan_screen.dart';
 import 'pilih_slot_screen.dart';
 
@@ -35,6 +39,15 @@ class _BerandaScreenState extends State<BerandaScreen> {
   void initState() {
     super.initState();
     _muat();
+    versiData.addListener(_muatAktif);
+    tabAktif.addListener(_saatTabBerubah);
+  }
+
+  @override
+  void dispose() {
+    versiData.removeListener(_muatAktif);
+    tabAktif.removeListener(_saatTabBerubah);
+    super.dispose();
   }
 
   @override
@@ -53,6 +66,39 @@ class _BerandaScreenState extends State<BerandaScreen> {
     _daftarLokasi = _lokasi.cariLokasi(kataKunci: widget.kataKunci);
     // Pesanan aktif hanya pelengkap: kalau gagal, banner tidak ditampilkan.
     _aktif = _pemesanan.pesananAktif().catchError((_) => null);
+  }
+
+  void _muatAktif() {
+    if (!mounted) return;
+    setState(() {
+      _aktif = _pemesanan.pesananAktif().catchError((_) => null);
+    });
+  }
+
+  void _saatTabBerubah() {
+    if (tabAktif.value == 0) _muatAktif();
+  }
+
+  /// Banner pesanan aktif menuju layar yang sesuai status.
+  void _bukaAktif(Map<String, dynamic> p) {
+    switch (aksiBooking(p['status'] as String?)) {
+      case AksiBooking.lanjutBayar:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => KonfirmasiPesananScreen(pemesanan: p),
+          ),
+        );
+      case AksiBooking.checkIn:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CheckInScreen(pemesanan: p)),
+        );
+      case AksiBooking.parkirBerlangsung:
+        tabAktif.value = 1;
+      case AksiBooking.tidakAda:
+        break;
+    }
   }
 
   Future<void> _bukaSlot(Map<String, dynamic> lokasi) async {
@@ -112,12 +158,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => KonfirmasiPesananScreen(pemesanan: p),
-                ),
-              ),
+              onTap: () => _bukaAktif(p),
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Row(

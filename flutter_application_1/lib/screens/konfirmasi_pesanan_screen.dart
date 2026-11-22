@@ -5,31 +5,8 @@ import '../services/pemesanan_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/kerangka_markir.dart';
 import '../widgets/markir_widgets.dart';
-import 'segera_hadir_screen.dart';
-
-/// Kode pesanan tampilan, mis. MKR-000123.
-String kodePesanan(Map<String, dynamic> p) {
-  final kode = p['kode_booking'];
-  if (kode is String && kode.isNotEmpty) return kode;
-  return 'MKR-${(p['id'] ?? '').toString().padLeft(6, '0')}';
-}
-
-String _labelStatus(String? s) {
-  switch (s) {
-    case 'menunggu_bayar':
-      return 'Menunggu bayar';
-    case 'dibayar':
-      return 'Dibayar';
-    case 'check_in':
-      return 'Check-in';
-    case 'selesai':
-      return 'Selesai';
-    case 'dibatalkan':
-      return 'Dibatalkan';
-    default:
-      return s ?? '-';
-  }
-}
+import '../services/data_pemesanan.dart';
+import 'pembayaran_screen.dart';
 
 class KonfirmasiPesananScreen extends StatefulWidget {
   const KonfirmasiPesananScreen({super.key, required this.pemesanan});
@@ -188,7 +165,7 @@ class _KonfirmasiPesananScreenState extends State<KonfirmasiPesananScreen> {
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
-                          _labelStatus(p['status'] as String?),
+                          labelStatus(p['status'] as String?),
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
@@ -204,12 +181,10 @@ class _KonfirmasiPesananScreenState extends State<KonfirmasiPesananScreen> {
               const SizedBox(height: 24),
               TombolUtama(
                 label: 'Lanjut ke pembayaran',
-                // TODO(pembayaran): ganti dengan layar pembayaran (tahap berikutnya).
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const SegeraHadirScreen(judul: 'Pembayaran'),
+                    builder: (_) => PembayaranScreen(pemesanan: p),
                   ),
                 ),
               ),

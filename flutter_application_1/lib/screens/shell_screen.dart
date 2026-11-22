@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../widgets/kerangka_markir.dart';
 import '../widgets/markir_widgets.dart';
 import 'beranda_screen.dart';
+import 'booking_aktif_screen.dart';
 import 'segera_hadir_screen.dart';
 
 /// Kerangka setelah login: navbar atas, tab, dan navigasi bawah (HP).
@@ -78,7 +79,7 @@ class _ShellScreenState extends State<ShellScreen> {
                       kataKunci: _kataKunci,
                       onHapusPencarian: _hapusCari,
                     ),
-                    const SegeraHadirView(judul: 'Booking'),
+                    const BookingAktifScreen(),
                     const SegeraHadirView(judul: 'Pengaturan'),
                   ],
                 ),

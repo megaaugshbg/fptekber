@@ -1,15 +1,16 @@
 import 'dart:math';
 
+import 'format_pemesanan.dart';
 import 'supabase_config.dart';
 
-/// Pencarian lokasi parkir dan denah slot.
+/// Pencarian lokasi parkir dan denah slot (hanya tipe normal).
 class LokasiService {
-  /// Cari lokasi yang punya slot tersedia untuk tipe tertentu.
-  /// tipe: 'normal' | 'woman' | 'priority' | 'ev'
+  /// Cari lokasi yang punya slot tersedia untuk tipe tertentu
+  /// (default 'normal'; data saat ini hanya tipe normal).
   /// Kalau latUser/lngUser diisi, hasil diurutkan dari yang terdekat
   /// dan tiap lokasi dapat field 'jarak_km'.
   Future<List<Map<String, dynamic>>> cariLokasi({
-    required String tipe,
+    String tipe = 'normal',
     String kataKunci = '',
     double? latUser,
     double? lngUser,
@@ -50,11 +51,14 @@ class LokasiService {
   /// Denah slot satu lokasi, otomatis update saat ada yang memesan.
   /// Pakai di StreamBuilder.
   Stream<List<Map<String, dynamic>>> streamSlot(int lokasiId) {
+    // Stream hanya mendukung satu filter, jadi tipe disaring di sisi klien
+    // dan diurutkan natural (A1, A2, ..., A10), bukan urutan teks server.
     return supabase
         .from('slot')
         .stream(primaryKey: ['id'])
         .eq('lokasi_id', lokasiId)
-        .order('kode_slot');
+        .map((rows) => urutkanSlot(
+            rows.where((s) => s['tipe'] == 'normal').toList()));
   }
 
   /// Jarak garis lurus (rumus haversine), cukup untuk menampilkan "1,2 km".

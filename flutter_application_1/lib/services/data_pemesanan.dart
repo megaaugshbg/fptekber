@@ -176,3 +176,36 @@ int? durasiDibayar(Map<String, dynamic> p) {
 
 /// "N jam" atau "-".
 String teksJam(int? n) => n == null ? '-' : '$n jam';
+
+// ---- Riwayat ----
+
+/// Status yang masuk Riwayat Booking (pesanan aktif ada di tab Aktif).
+const statusRiwayat = ['selesai', 'dibatalkan'];
+
+/// Label tipe slot, sama dengan PPPL.
+String labelTipe(String? tipe) {
+  switch (tipe) {
+    case 'normal':
+      return 'Normal Parking';
+    case 'woman':
+      return 'Woman Parking';
+    case 'priority':
+      return 'Priority Parking';
+    case 'ev':
+      return 'EV Charging Parking';
+    default:
+      return tipe ?? '-';
+  }
+}
+
+String tipeSlotDari(Map<String, dynamic> p) =>
+    labelTipe(slotDari(p)['tipe']?.toString());
+
+/// Waktu pesanan dibuat (created_at).
+DateTime? waktuDipesan(Map<String, dynamic> p) => parseWaktu(p['created_at']);
+
+/// Tanggal yang ditampilkan di daftar riwayat:
+/// selesai = waktu keluar, dibatalkan = waktu dipesan.
+DateTime? waktuRiwayat(Map<String, dynamic> p) => p['status'] == 'selesai'
+    ? (waktuCheckOut(p) ?? waktuDipesan(p))
+    : waktuDipesan(p);

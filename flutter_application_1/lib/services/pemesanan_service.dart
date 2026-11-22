@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'data_pemesanan.dart';
 import 'supabase_config.dart';
 
 /// Pemesanan + pembayaran, check-in, check-out.
@@ -36,6 +36,23 @@ class PemesananService {
         .from('pemesanan')
         .select(_join)
         .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(data);
+  }
+
+    /// READ - Riwayat Booking (selesai / dibatalkan), terbaru di atas,
+  /// per halaman. [status] null = semua, atau 'selesai' / 'dibatalkan'.
+  Future<List<Map<String, dynamic>>> daftarRiwayat({
+    String? status,
+    int halaman = 0,
+    int perHalaman = 10,
+  }) async {
+    final dari = halaman * perHalaman;
+    final data = await supabase
+        .from('pemesanan')
+        .select(_join)
+        .inFilter('status', status == null ? statusRiwayat : [status])
+        .order('id', ascending: false)
+        .range(dari, dari + perHalaman - 1);
     return List<Map<String, dynamic>>.from(data);
   }
 

@@ -7,7 +7,7 @@ import '../widgets/kerangka_markir.dart';
 import '../widgets/markir_widgets.dart';
 import 'beranda_screen.dart';
 import 'booking_screen.dart';
-import 'segera_hadir_screen.dart';
+import 'profil_screen.dart';
 
 /// Kerangka setelah login: navbar atas, tab, dan navigasi bawah (HP).
 class ShellScreen extends StatefulWidget {
@@ -21,13 +21,13 @@ class _ShellScreenState extends State<ShellScreen> {
   final _cari = TextEditingController();
   Timer? _debounce;
   String _kataKunci = '';
-  late final Future<Map<String, dynamic>> _profil;
+  String? _namaOverride;
+  late final _profil = AuthService().ambilProfil();
 
   @override
   void initState() {
     super.initState();
     tabAktif.value = 0;
-    _profil = AuthService().ambilProfil();
   }
 
   @override
@@ -60,12 +60,12 @@ class _ShellScreenState extends State<ShellScreen> {
         return Scaffold(
           body: Column(
             children: [
-              FutureBuilder<Map<String, dynamic>>(
+              FutureBuilder(
                 future: _profil,
                 builder: (context, snap) => NavbarAtas(
                   cari: tab == 0 ? _cari : null,
                   onCariBerubah: _onCari,
-                  nama: snap.data?['nama'] as String?,
+                  nama: _namaOverride ?? (snap.data?['nama'] as String?),
                   tab: tab,
                   onTab: (i) => tabAktif.value = i,
                 ),
@@ -80,7 +80,11 @@ class _ShellScreenState extends State<ShellScreen> {
                       onHapusPencarian: _hapusCari,
                     ),
                     const BookingScreen(),
-                    const SegeraHadirView(judul: 'Pengaturan'),
+                    ProfilScreen(
+                      onNamaBerubah: (namaBaru) {
+                        if (mounted) setState(() => _namaOverride = namaBaru);
+                      },
+                    ),
                   ],
                 ),
               ),
